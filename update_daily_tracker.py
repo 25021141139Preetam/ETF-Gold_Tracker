@@ -84,6 +84,28 @@ def get_historical_gold(start_date, end_date):
     df['Domestic_10g'] = (df['Close_GC'] * df['Close_INR']) / 3.11034768 * 1.15 * 1.03
     return df
 
+
+def fetch_amfi_navs():
+    url = "https://www.amfiindia.com/spages/NAVAll.txt"
+    try:
+        lines = requests.get(url).text.split("\n")
+    except Exception as e:
+        return {}
+        
+    nav_data = {}
+    for line in lines:
+        parts = line.split(";")
+        if len(parts) >= 6:
+            code = parts[0]
+            try:
+                nav = float(parts[-2])
+                d_str = parts[-1].strip()
+                dt = pd.to_datetime(d_str, format="%d-%b-%Y").date()
+                nav_data[code] = {"nav": nav, "date": dt}
+            except:
+                pass
+    return nav_data
+
 def update_tracker(file_path):
     logging.info(f"Opening workbook: {file_path}")
     try:
@@ -92,6 +114,16 @@ def update_tracker(file_path):
         logging.error(f"Failed to open workbook: {e}")
         return
 
+    amfi_mapping = {
+        "GOLDBETA": "111954",
+        "HDFCGOLD": "113049",
+        "GOLDIETF": "105463",
+        "BSLGOLDETF": "115127",
+        "LICMFGOLD": "151961"
+    }
+    
+    nav_data = fetch_amfi_navs()
+
     etf_sheets = ['GOLDBETA', 'HDFCGOLD', 'GOLDIETF', 'BSLGOLDETF', 'LICMFGOLD']
     today = datetime.datetime.now().date()
     end_date_yf = today + datetime.timedelta(days=1)
@@ -99,9 +131,28 @@ def update_tracker(file_path):
     for sheet_name in etf_sheets:
         if sheet_name not in wb.sheetnames:
             continue
-            
         ws = wb[sheet_name]
         
+        # NAV Update Logic
+        amfi_code = amfi_mapping.get(sheet_name)
+        if amfi_code and amfi_code in nav_data:
+            latest_nav = nav_data[amfi_code]["nav"]
+            latest_nav_date = nav_data[amfi_code]["date"]
+            
+            for r in range(ws.max_row, 9, -1):
+                d = ws.cell(row=r, column=1).value
+                if d:
+                    try:
+                        d_parsed = d.date() if hasattr(d, 'strftime') else pd.to_datetime(d).date()
+                        if d_parsed == latest_nav_date:
+                            current_nav = ws.cell(row=r, column=4).value
+                            if current_nav is None or str(current_nav).strip() == "" or float(current_nav) == 0:
+                                ws.cell(row=r, column=4).value = latest_nav
+                                ws.cell(row=r, column=4).number_format = '[$₹-en-IN]#,##0.00'
+                                logging.info(f"[{sheet_name}] Updated NAV for {latest_nav_date} to {latest_nav}")
+                    except:
+                        pass
+
         last_row = 9
         last_date = None
         for r in range(10, ws.max_row + 1):

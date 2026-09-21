@@ -106,6 +106,11 @@ def update_tracker(file_path):
         last_date = None
         for r in range(10, ws.max_row + 1):
             cell_val = ws.cell(row=r, column=1).value
+            price_val = ws.cell(row=r, column=3).value
+            
+            if price_val is None or str(price_val).strip() == "":
+                continue
+                
             if isinstance(cell_val, datetime.datetime):
                 last_row = r
                 last_date = cell_val.date()

@@ -25,7 +25,7 @@ def fetch_data_fallback(symbol, start_date, end_date):
             logging.info(f"Fetching {clean_symbol} via NSE (Attempt {attempt+1}/{max_retries})")
             df = stock_df(symbol=clean_symbol, from_date=s_date, to_date=e_date, series="EQ")
             if not df.empty:
-                df['DATE'] = pd.to_datetime(df['DATE'])
+                df['DATE'] = pd.to_datetime(df['DATE']) + pd.Timedelta(hours=5, minutes=30)
                 df.set_index('DATE', inplace=True)
                 df = df.sort_index()
                 df.rename(columns={'CLOSE': 'Close'}, inplace=True)

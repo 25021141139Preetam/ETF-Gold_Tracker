@@ -9,26 +9,37 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 import time
 import random
+from jugaad_data.nse import stock_df
 
 def fetch_data_fallback(symbol, start_date, end_date):
-    max_retries = 5
+    max_retries = 3
+    # Remove .NS for jugaad-data
+    clean_symbol = symbol.replace(".NS", "")
+    
+    # Ensure start_date and end_date are datetime.date objects
+    s_date = start_date.date() if isinstance(start_date, datetime.datetime) else start_date
+    e_date = end_date.date() if isinstance(end_date, datetime.datetime) else end_date
+    
     for attempt in range(max_retries):
         try:
-            logging.info(f"Fetching {symbol} (Attempt {attempt+1}/{max_retries})")
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"))
+            logging.info(f"Fetching {clean_symbol} via NSE (Attempt {attempt+1}/{max_retries})")
+            df = stock_df(symbol=clean_symbol, from_date=s_date, to_date=e_date, series="EQ")
             if not df.empty:
+                df['DATE'] = pd.to_datetime(df['DATE'])
+                df.set_index('DATE', inplace=True)
+                df = df.sort_index()
+                df.rename(columns={'CLOSE': 'Close'}, inplace=True)
                 return df
-            logging.warning(f"Empty dataframe returned for {symbol}. Yahoo might have blocked the request.")
+            logging.warning(f"Empty dataframe returned for {clean_symbol}.")
         except Exception as e:
-            logging.error(f"Error fetching data for {symbol}: {e}")
+            logging.error(f"Error fetching data for {clean_symbol}: {e}")
         
         if attempt < max_retries - 1:
-            delay = random.uniform(5, 12)
+            delay = random.uniform(3, 8)
             logging.info(f"Sleeping for {delay:.2f} seconds before retrying...")
             time.sleep(delay)
             
-    logging.error(f"Failed to fetch {symbol} after {max_retries} attempts.")
+    logging.error(f"Failed to fetch {clean_symbol} after {max_retries} attempts.")
     return pd.DataFrame()
 
 def get_historical_gold(start_date, end_date):

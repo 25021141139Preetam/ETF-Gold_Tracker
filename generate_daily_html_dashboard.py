@@ -31,11 +31,18 @@ def extract_data(file_path):
     
     table_data = []
     
+    # Calculate physical gold 1D return
+    prev_row = last_row - 1 if last_row > 2 else 2
+    gold_last = ws_data.cell(row=last_row, column=12).value or 0
+    gold_prev = ws_data.cell(row=prev_row, column=12).value or 0
+    gold_1d_pct = ((gold_last - gold_prev) / gold_prev * 100) if gold_prev else 0
+    
     for name, c_close, c_val in etfs:
         curr_price = ws_data.cell(row=last_row, column=c_close).value or 0
         curr_val = ws_data.cell(row=last_row, column=c_val).value or 0
         
         prev_row = last_row - 1 if last_row > 2 else 2
+        prev_price = ws_data.cell(row=prev_row, column=c_close).value or 0
         prev_val = ws_data.cell(row=prev_row, column=c_val).value or 0
         first_val = ws_data.cell(row=2, column=c_val).value or 0
         
@@ -63,10 +70,14 @@ def extract_data(file_path):
         table_data.append({
             "etf": name,
             "price": float(curr_price),
+            "prev_price": float(prev_price),
             "val": float(curr_val),
             "1d_change": float(c1d),
             "1d_change_pct": float(c1d_pct),
-            "nav_change": float(nav_change)
+            "nav_change": float(nav_change),
+            "nav_last": float(nav_last),
+            "nav_prev": float(nav_prev),
+            "tracking_diff": float(c1d_pct - gold_1d_pct)
         })
         
     for t in table_data:
@@ -270,12 +281,16 @@ def generate_html(data):
         <thead>
           <tr>
             <th>ETF</th>
+            <th>Last Traded Price</th>
             <th>Latest Price</th>
-            <th>Holding Value</th>
-            <th>Weight %</th>
+            <th>Last NAV</th>
+            <th>Present NAV</th>
+            <th>NAV Change</th>
             <th>1D Change</th>
             <th>1D Change %</th>
-            <th>NAV Change</th>
+            <th>Tracking Diff</th>
+            <th>Holding Value</th>
+            <th>Weight %</th>
           </tr>
         </thead>
         <tbody>"""
@@ -291,16 +306,22 @@ def generate_html(data):
         c1d_sign = "+" if h['1d_change'] >= 0 else ""
         nav_class = "up" if h['nav_change'] >= 0 else "down"
         nav_sign = "+" if h['nav_change'] >= 0 else ""
+        td_class = "up" if h['tracking_diff'] >= 0 else "down"
+        td_sign = "+" if h['tracking_diff'] >= 0 else ""
         
         html += f"""
           <tr>
             <td style="font-weight: 600; color: {colors[i%len(colors)]}; font-size: 1.1rem;">{h['etf']}</td>
-            <td style="font-size: 1.05rem;">{fmt(h['price'])}</td>
-            <td style="font-weight: 600; font-size: 1.1rem;">{fmt(h['val'])}</td>
-            <td style="color: var(--text-secondary);">{f_pct(h['weight']*100)}</td>
+            <td style="color: var(--text-secondary);">{fmt(h['prev_price'])}</td>
+            <td style="font-size: 1.05rem; font-weight: 600;">{fmt(h['price'])}</td>
+            <td style="color: var(--text-secondary);">{fmt(h['nav_prev'])}</td>
+            <td style="font-size: 1.05rem;">{fmt(h['nav_last'])}</td>
+            <td><span class="pill {nav_class}" style="background: transparent; border: none; padding: 0;">{nav_sign}{fmt(h['nav_change']).replace('₹-', '-₹')}</span></td>
             <td><span class="pill {c1d_class}">{c1d_sign}{fmt(h['1d_change']).replace('₹-', '-₹')}</span></td>
             <td style="color: {'#34d399' if h['1d_change_pct'] >= 0 else '#f87171'}; font-weight: 600;">{c1d_sign}{f_pct(h['1d_change_pct'])}</td>
-            <td><span class="pill {nav_class}" style="background: transparent; border: none; padding: 0;">{nav_sign}{fmt(h['nav_change']).replace('₹-', '-₹')}</span></td>
+            <td><span class="pill {td_class}">{td_sign}{f_pct(h['tracking_diff'])}</span></td>
+            <td style="font-weight: 600; font-size: 1.1rem;">{fmt(h['val'])}</td>
+            <td style="color: var(--text-secondary);">{f_pct(h['weight']*100)}</td>
           </tr>"""
 
     html += f"""

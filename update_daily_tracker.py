@@ -7,35 +7,64 @@ import requests
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def get_yfinance_session():
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-    })
-    return session
+import time
+import random
 
 def fetch_data_fallback(symbol, start_date, end_date):
-    try:
-        session = get_yfinance_session()
-        ticker = yf.Ticker(symbol, session=session)
-        df = ticker.history(start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"))
-        return df
-    except Exception as e:
-        logging.error(f"Error fetching data for {symbol}: {e}")
-        return pd.DataFrame()
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            logging.info(f"Fetching {symbol} (Attempt {attempt+1}/{max_retries})")
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"))
+            if not df.empty:
+                return df
+            logging.warning(f"Empty dataframe returned for {symbol}. Yahoo might have blocked the request.")
+        except Exception as e:
+            logging.error(f"Error fetching data for {symbol}: {e}")
+        
+        if attempt < max_retries - 1:
+            delay = random.uniform(5, 12)
+            logging.info(f"Sleeping for {delay:.2f} seconds before retrying...")
+            time.sleep(delay)
+            
+    logging.error(f"Failed to fetch {symbol} after {max_retries} attempts.")
+    return pd.DataFrame()
 
 def get_historical_gold(start_date, end_date):
-    session = get_yfinance_session()
-    gc = yf.Ticker("GC=F", session=session)
-    inr = yf.Ticker("INR=X", session=session)
+    max_retries = 3
+    df_gc = pd.DataFrame()
+    df_inr = pd.DataFrame()
     
     s_str = (start_date - datetime.timedelta(days=5)).strftime("%Y-%m-%d")
     e_str = (end_date + datetime.timedelta(days=2)).strftime("%Y-%m-%d")
     
-    df_gc = gc.history(start=s_str, end=e_str)
-    df_inr = inr.history(start=s_str, end=e_str)
-    
+    # Fetch GC=F
+    for attempt in range(max_retries):
+        try:
+            gc = yf.Ticker("GC=F")
+            df_gc = gc.history(start=s_str, end=e_str)
+            if not df_gc.empty:
+                break
+        except Exception as e:
+            pass
+        time.sleep(random.uniform(3, 7))
+        
+    # Fetch INR=X
+    for attempt in range(max_retries):
+        try:
+            inr = yf.Ticker("INR=X")
+            df_inr = inr.history(start=s_str, end=e_str)
+            if not df_inr.empty:
+                break
+        except Exception as e:
+            pass
+        time.sleep(random.uniform(3, 7))
+        
+    if df_gc.empty or df_inr.empty:
+        logging.error("Failed to fetch Gold or Currency data.")
+        return pd.DataFrame()
+        
     df_gc.index = pd.to_datetime(df_gc.index).tz_localize(None).normalize()
     df_inr.index = pd.to_datetime(df_inr.index).tz_localize(None).normalize()
     
